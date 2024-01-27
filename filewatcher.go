@@ -58,14 +58,15 @@ func handleFound(target *fileWatcherTarget, path string, info os.FileInfo, err e
 	modTime := info.ModTime().UnixNano()
 	if ok {
 		isModified := modTime != found.modTime
-		if isDir != foundIsDir {
+		switch {
+		case isDir != foundIsDir:
 			defer func() {
 				removed(path, foundIsDir)
 				created(path, isDir)
 			}()
-		} else if isModified {
+		case isModified:
 			defer modified(path, isDir)
-		} else {
+		default:
 			return
 		}
 		*target.founds[path] = fileWatcherRecord{modTime: modTime, isDir: isDir}
