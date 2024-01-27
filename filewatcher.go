@@ -79,7 +79,11 @@ func handleFound(locker concurrentcache.Locker, target *fileWatcherTarget, path 
 			return
 		}
 		locker.Lock()
-		*target.founds[path] = fileWatcherRecord{modTime: modTime, isDir: isDir}
+		if _, ok := target.founds[path]; ok {
+			*target.founds[path] = fileWatcherRecord{modTime: modTime, isDir: isDir}
+		} else {
+			target.founds[path] = &fileWatcherRecord{modTime: modTime, isDir: isDir}
+		}
 		locker.Unlock()
 	} else {
 		locker.Lock()
