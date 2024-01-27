@@ -1,11 +1,12 @@
 package filewatcher
 
+// filePath represents a file path with depth information
 type filePath struct {
 	Value string
 	Depth int
 }
 
-// Paths is a slice of Path
+// filePathList is a slice of filePath
 type filePathList []filePath
 
 // Len, Less, and Swap are needed to implement the sort.Interface
