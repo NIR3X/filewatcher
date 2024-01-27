@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -105,17 +106,23 @@ func NewFileWatcher(updateInterval time.Duration, created func(path string, isDi
 			foundsCopy := mapDup(target.founds)
 			locker.RUnlock()
 
+			foundsPath := make([]string, 0, len(foundsCopy))
+			for foundPath := range foundsCopy {
+				foundsPath = append(foundsPath, foundPath)
+			}
+
 			if isDir {
 				filepath.Walk(targetPath, func(path string, info os.FileInfo, err error) error {
-					if _, ok := foundsCopy[path]; ok {
-						delete(foundsCopy, path)
+					if _, ok := foundsCopy[path]; !ok {
+						foundsPath = append(foundsPath, path)
 					}
-					handleFound(locker, target, path, info, err, created, removed, modified)
 					return nil
 				})
 			}
 
-			for foundPath := range foundsCopy {
+			sort.Sort(sort.Reverse(sort.StringSlice(foundsPath)))
+
+			for _, foundPath := range foundsPath {
 				info, err := os.Stat(foundPath)
 				handleFound(locker, target, foundPath, info, err, created, removed, modified)
 			}
