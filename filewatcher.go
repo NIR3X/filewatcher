@@ -160,7 +160,6 @@ func (f *FileWatcher) Unwatch(path string) error {
 		}
 
 		foundsPath := make(filePathList, 0, len(target.founds))
-
 		for foundPath := range target.founds {
 			foundsPath = append(foundsPath, filePath{Value: foundPath, Depth: strings.Count(foundPath, string(os.PathSeparator))})
 		}
