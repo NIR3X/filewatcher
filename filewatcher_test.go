@@ -28,10 +28,10 @@ func TestFileWatcher(t *testing.T) {
 	})
 	defer f.Close()
 
-	err := f.Watch("a.txt")
+	err := f.Watch(".")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	time.Sleep(10 * time.Minute)
+	// time.Sleep(10 * time.Minute)
 }
