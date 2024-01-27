@@ -16,9 +16,8 @@ type fileWatcherRecord struct {
 }
 
 type fileWatcherTarget struct {
-	unwatched bool
-	isDir     bool
-	founds    map[string]*fileWatcherRecord
+	isDir  bool
+	founds map[string]*fileWatcherRecord
 }
 
 type fileWatcherCache struct {
@@ -34,153 +33,87 @@ func newFileWatcherCache() *fileWatcherCache {
 type FileWatcher struct {
 	mtx             sync.Mutex
 	concurrentCache concurrentcache.ConcurrentCache[*fileWatcherCache]
+	created         func(path string, isDir bool)
+	removed         func(path string, isDir bool)
+	modified        func(path string, isDir bool)
+}
+
+func handleFound(locker concurrentcache.Locker, target *fileWatcherTarget, path string, info os.FileInfo, err error, created func(path string, isDir bool), removed func(path string, isDir bool), modified func(path string, isDir bool)) {
+	var (
+		foundIsDir   bool
+		foundModTime int64 = math.MinInt64
+	)
+	locker.RLock()
+	found, ok := target.founds[path]
+	if ok {
+		foundIsDir = found.isDir
+		foundModTime = found.modTime
+	}
+	locker.RUnlock()
+
+	if err != nil {
+		if os.IsNotExist(err) {
+			if ok {
+				locker.Lock()
+				delete(target.founds, path)
+				locker.Unlock()
+				removed(path, foundIsDir)
+			}
+		}
+		return
+	}
+	isDir := info.IsDir()
+	modTime := info.ModTime().UnixNano()
+	if ok {
+		isModified := modTime != foundModTime
+		if isDir != foundIsDir {
+			defer func() {
+				removed(path, foundIsDir)
+				created(path, isDir)
+			}()
+		} else if isModified {
+			defer func() {
+				modified(path, isDir)
+			}()
+		} else {
+			return
+		}
+		locker.Lock()
+		*target.founds[path] = fileWatcherRecord{modTime: modTime, isDir: isDir}
+		locker.Unlock()
+	} else {
+		locker.Lock()
+		target.founds[path] = &fileWatcherRecord{modTime: modTime, isDir: isDir}
+		locker.Unlock()
+		created(path, isDir)
+	}
 }
 
 func NewFileWatcher(updateInterval time.Duration, created func(path string, isDir bool), removed func(path string, isDir bool), modified func(path string, isDir bool)) *FileWatcher {
 	concurrentCache := concurrentcache.NewConcurrentCache[*fileWatcherCache](newFileWatcherCache(), updateInterval, func(locker concurrentcache.Locker, cache *fileWatcherCache) {
-		locker.Lock()
-		targetsCopy := make(map[string]*fileWatcherTarget, len(cache.targets))
-		for targetPath, target := range cache.targets {
-			targetsCopy[targetPath] = target
-		}
-		locker.Unlock()
+		locker.RLock()
+		targetsCopy := mapDup(cache.targets)
+		locker.RUnlock()
 
 		for targetPath, target := range targetsCopy {
 			locker.RLock()
-			unwatched := target.unwatched
+			isDir := target.isDir
+			foundsCopy := mapDup(target.founds)
 			locker.RUnlock()
-			info, err := os.Stat(targetPath)
-			if err != nil && os.IsNotExist(err) || unwatched {
-				locker.Lock()
-				if unwatched {
-					delete(cache.targets, targetPath)
-				}
-				_, ok := target.founds[targetPath]
-				if ok {
-					delete(target.founds, targetPath)
-				}
-				locker.Unlock()
-				if ok {
-					removed(targetPath, target.isDir)
-				}
-			}
-			var (
-				modTime int64 = math.MinInt64
-				isDir         = true
-			)
-			if err == nil && !unwatched {
-				modTime = info.ModTime().UnixNano()
-				isDir = info.IsDir()
-				locker.Lock()
-				_, ok := cache.targets[targetPath]
-				if ok {
-					cache.targets[targetPath].isDir = isDir
-				}
-				locker.Unlock()
-			}
-			if isDir {
-				locker.Lock()
-				foundsCopy := make(map[string]*fileWatcherRecord, len(target.founds))
-				for foundPath, found := range target.founds {
-					foundsCopy[foundPath] = found
-				}
-				locker.Unlock()
 
+			if isDir {
 				filepath.Walk(targetPath, func(path string, info os.FileInfo, err error) error {
-					delete(foundsCopy, path)
-					if err != nil && os.IsNotExist(err) || unwatched {
-						locker.Lock()
-						found, ok := target.founds[path]
-						if ok {
-							delete(target.founds, path)
-						}
-						locker.Unlock()
-						if ok {
-							removed(path, found.isDir)
-						}
-						return err
+					if _, ok := foundsCopy[path]; ok {
+						delete(foundsCopy, path)
 					}
-					if err != nil {
-						return err
-					}
-					var modTime, foundModTime int64 = info.ModTime().UnixNano(), math.MinInt64
-					isDir := info.IsDir()
-					locker.Lock()
-					found, ok := target.founds[path]
-					if ok {
-						foundModTime = found.modTime
-						*target.founds[path] = fileWatcherRecord{modTime: modTime, isDir: isDir}
-					} else {
-						target.founds[path] = &fileWatcherRecord{modTime: modTime, isDir: isDir}
-					}
-					locker.Unlock()
-					if modTime == foundModTime {
-						return nil
-					}
-					if ok {
-						modified(path, isDir)
-					} else {
-						created(path, isDir)
-					}
+					handleFound(locker, target, path, info, err, created, removed, modified)
 					return nil
 				})
+			}
 
-				for foundPath, found := range foundsCopy {
-					info, err := os.Stat(foundPath)
-					if err != nil && os.IsNotExist(err) || unwatched {
-						locker.Lock()
-						_, ok := target.founds[foundPath]
-						if ok {
-							delete(target.founds, foundPath)
-						}
-						locker.Unlock()
-						if ok {
-							removed(foundPath, found.isDir)
-						}
-						continue
-					}
-					if err != nil {
-						continue
-					}
-					var modTime, foundModTime int64 = info.ModTime().UnixNano(), math.MinInt64
-					isDir := info.IsDir()
-					locker.Lock()
-					_, ok := target.founds[foundPath]
-					if ok {
-						foundModTime = found.modTime
-						*target.founds[foundPath] = fileWatcherRecord{modTime: modTime, isDir: isDir}
-					} else {
-						target.founds[foundPath] = &fileWatcherRecord{modTime: modTime, isDir: isDir}
-					}
-					locker.Unlock()
-					if modTime == foundModTime {
-						continue
-					}
-					if ok {
-						modified(foundPath, isDir)
-					} else {
-						created(foundPath, isDir)
-					}
-				}
-			} else {
-				var foundModTime int64 = math.MinInt64
-				locker.Lock()
-				found, ok := target.founds[targetPath]
-				if ok {
-					foundModTime = found.modTime
-					*target.founds[targetPath] = fileWatcherRecord{modTime: modTime, isDir: isDir}
-				} else {
-					target.founds[targetPath] = &fileWatcherRecord{modTime: modTime, isDir: isDir}
-				}
-				locker.Unlock()
-				if modTime == foundModTime {
-					continue
-				}
-				if ok {
-					modified(targetPath, isDir)
-				} else {
-					created(targetPath, isDir)
-				}
+			for foundPath := range foundsCopy {
+				info, err := os.Stat(foundPath)
+				handleFound(locker, target, foundPath, info, err, created, removed, modified)
 			}
 		}
 	})
@@ -188,6 +121,9 @@ func NewFileWatcher(updateInterval time.Duration, created func(path string, isDi
 	return &FileWatcher{
 		mtx:             sync.Mutex{},
 		concurrentCache: concurrentCache,
+		created:         created,
+		removed:         removed,
+		modified:        modified,
 	}
 }
 
@@ -211,7 +147,7 @@ func (f *FileWatcher) Watch(path string) error {
 	isDir := info.IsDir()
 
 	f.concurrentCache.AccessWrite(func(cache *fileWatcherCache) {
-		cache.targets[absPath] = &fileWatcherTarget{unwatched: false, isDir: isDir, founds: make(map[string]*fileWatcherRecord)}
+		cache.targets[absPath] = &fileWatcherTarget{isDir: isDir, founds: make(map[string]*fileWatcherRecord)}
 	})
 
 	return nil
@@ -226,10 +162,28 @@ func (f *FileWatcher) Unwatch(path string) error {
 		return err
 	}
 
-	f.concurrentCache.AccessWrite(func(cache *fileWatcherCache) {
-		_, ok := cache.targets[absPath]
+	f.concurrentCache.Access(func(locker concurrentcache.Locker, cache *fileWatcherCache) {
+		var foundsClone map[string]*fileWatcherRecord
+		locker.RLock()
+		target, ok := cache.targets[absPath]
 		if ok {
-			cache.targets[absPath].unwatched = true
+			foundsClone = mapDup(target.founds)
+		}
+		locker.RUnlock()
+		if ok {
+			locker.Lock()
+			delete(cache.targets, absPath)
+			locker.Unlock()
+		} else {
+			return
+		}
+
+		for foundPath, found := range foundsClone {
+			locker.Lock()
+			isDir := found.isDir
+			delete(target.founds, foundPath)
+			locker.Unlock()
+			f.removed(foundPath, isDir)
 		}
 	})
 
