@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/NIR3X/concurrentcache"
@@ -32,7 +31,6 @@ func newFileWatcherCache() *fileWatcherCache {
 }
 
 type FileWatcher struct {
-	mtx             sync.Mutex
 	concurrentCache concurrentcache.ConcurrentCache[*fileWatcherCache]
 	created         func(path string, isDir bool)
 	removed         func(path string, isDir bool)
@@ -106,7 +104,6 @@ func NewFileWatcher(updateInterval time.Duration, created func(path string, isDi
 	})
 
 	return &FileWatcher{
-		mtx:             sync.Mutex{},
 		concurrentCache: concurrentCache,
 		created:         created,
 		removed:         removed,
@@ -119,9 +116,6 @@ func (f *FileWatcher) Close() {
 }
 
 func (f *FileWatcher) Watch(path string) error {
-	f.mtx.Lock()
-	defer f.mtx.Unlock()
-
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -143,9 +137,6 @@ func (f *FileWatcher) Watch(path string) error {
 }
 
 func (f *FileWatcher) Unwatch(path string) error {
-	f.mtx.Lock()
-	defer f.mtx.Unlock()
-
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return err
