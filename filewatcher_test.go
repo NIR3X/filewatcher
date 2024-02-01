@@ -7,7 +7,7 @@ import (
 )
 
 func TestFileWatcher(t *testing.T) {
-	f := NewFileWatcher(time.Second, func(path string, isDir bool) {
+	f := NewFileWatcher(time.Second, func(path string, isDir bool, failed func()) {
 		if isDir {
 			fmt.Println("created dir:", path)
 		} else {
@@ -19,7 +19,7 @@ func TestFileWatcher(t *testing.T) {
 		} else {
 			fmt.Println("removed file:", path)
 		}
-	}, func(path string, isDir bool) {
+	}, func(path string, isDir bool, failed func()) {
 		if isDir {
 			fmt.Println("modified dir:", path)
 		} else {

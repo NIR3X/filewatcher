@@ -23,7 +23,7 @@ import (
 
 func main() {
 	// Initialize FileWatcher
-	f := filewatcher.NewFileWatcher(time.Second, func(path string, isDir bool) {
+	f := filewatcher.NewFileWatcher(time.Second, func(path string, isDir bool, failed func()) {
 		// Callback for created files and directories
 		if isDir {
 			fmt.Println("created dir:", path)
@@ -37,7 +37,7 @@ func main() {
 		} else {
 			fmt.Println("removed file:", path)
 		}
-	}, func(path string, isDir bool) {
+	}, func(path string, isDir bool, failed func()) {
 		// Callback for modified files and directories
 		if isDir {
 			fmt.Println("modified dir:", path)

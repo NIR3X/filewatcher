@@ -32,12 +32,12 @@ func newFileWatcherCache() *fileWatcherCache {
 
 type FileWatcher struct {
 	concurrentCache concurrentcache.ConcurrentCache[*fileWatcherCache]
-	created         func(path string, isDir bool)
+	created         func(path string, isDir bool, failed func())
 	removed         func(path string, isDir bool)
-	modified        func(path string, isDir bool)
+	modified        func(path string, isDir bool, failed func())
 }
 
-func handleFound(target *fileWatcherTarget, path string, info os.FileInfo, err error, created func(path string, isDir bool), removed func(path string, isDir bool), modified func(path string, isDir bool)) {
+func handleFound(target *fileWatcherTarget, path string, info os.FileInfo, err error, created func(path string, isDir bool, failed func()), removed func(path string, isDir bool), modified func(path string, isDir bool, failed func())) {
 	var foundIsDir bool
 	found, ok := target.founds[path]
 	if ok {
@@ -60,21 +60,27 @@ func handleFound(target *fileWatcherTarget, path string, info os.FileInfo, err e
 		case isDir != foundIsDir:
 			defer func() {
 				removed(path, foundIsDir)
-				created(path, isDir)
+				created(path, isDir, func() {
+					delete(target.founds, path)
+				})
 			}()
 		case isModified:
-			defer modified(path, isDir)
+			defer modified(path, isDir, func() {
+				found.modTime = 0
+			})
 		default:
 			return
 		}
 		*target.founds[path] = fileWatcherRecord{modTime: modTime, isDir: isDir}
 	} else {
 		target.founds[path] = &fileWatcherRecord{modTime: modTime, isDir: isDir}
-		created(path, isDir)
+		created(path, isDir, func() {
+			delete(target.founds, path)
+		})
 	}
 }
 
-func NewFileWatcher(updateInterval time.Duration, created func(path string, isDir bool), removed func(path string, isDir bool), modified func(path string, isDir bool)) *FileWatcher {
+func NewFileWatcher(updateInterval time.Duration, created func(path string, isDir bool, failed func()), removed func(path string, isDir bool), modified func(path string, isDir bool, failed func())) *FileWatcher {
 	concurrentCache := concurrentcache.NewConcurrentCache[*fileWatcherCache](newFileWatcherCache(), updateInterval, func(locker concurrentcache.Locker, cache *fileWatcherCache) {
 		locker.Lock()
 		defer locker.Unlock()
