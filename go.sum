@@ -2,3 +2,5 @@ github.com/NIR3X/concurrentcache v0.0.0-20240127091600-ae201ca6a4c1 h1:hgfPIy5GW
 github.com/NIR3X/concurrentcache v0.0.0-20240127091600-ae201ca6a4c1/go.mod h1:RCo9kFNRKTA6QKOpFqTDfd5HlINXCHXMs/TDKV0dGDU=
 github.com/NIR3X/concurrentcache v0.0.0-20240127100201-01ef8bd37490 h1:UmYAtNRVPd4v1HuIiasVPnjWn8t+CjrBtrY+F+Skyvg=
 github.com/NIR3X/concurrentcache v0.0.0-20240127100201-01ef8bd37490/go.mod h1:RCo9kFNRKTA6QKOpFqTDfd5HlINXCHXMs/TDKV0dGDU=
+github.com/NIR3X/concurrentcache v0.0.0-20240216040144-5695623c9aca h1:Bp8LI9Gn8yAJNwb8VhUay9/aDnttwy6iA9pJW56dUp4=
+github.com/NIR3X/concurrentcache v0.0.0-20240216040144-5695623c9aca/go.mod h1:RCo9kFNRKTA6QKOpFqTDfd5HlINXCHXMs/TDKV0dGDU=
